@@ -255,3 +255,56 @@ def test_editor_keys(initial, keys, expected):
     with create_pipe_input() as pipe:
         pipe.send_text(keys)
         assert edit_message(initial, input=pipe, output=DummyOutput()) == expected
+
+
+# Copying rewrites after the results.
+
+
+@pytest.fixture
+def copied(monkeypatch):
+    clipboard = []
+    monkeypatch.setattr("adaptive_comm.cli.write_clipboard", clipboard.append)
+    monkeypatch.setattr("adaptive_comm.cli.interactive", lambda: True)
+    return clipboard
+
+
+def test_copy_rewrites_by_number(monkeypatch, capsys, copied):
+    monkeypatch.setattr("sys.stdin", TTYInput("2\nabc\n9\n3\n\n"))
+
+    assert main(["hello"], client=FakeClient(full_payload())) == 0
+
+    assert copied == ["rewrite for empathic_pm", "rewrite for vision_director"]
+    err = capsys.readouterr().err
+    assert "Copied empathic_pm's rewrite." in err
+    assert err.count("Enter a number from 1 to 3.") == 2  # "abc" and "9"
+
+
+def test_copy_numbers_continue_across_messages(monkeypatch, capsys, copied):
+    monkeypatch.setattr("sys.stdin", TTYInput("4\n\n"))
+
+    assert main(["first", "second"], client=FakeClient(full_payload())) == 0
+
+    assert copied == ["rewrite for pragmatic_engineer"]
+    assert "Copied message 2, pragmatic_engineer's rewrite." in capsys.readouterr().err
+
+
+def test_no_copy_prompt_when_not_interactive(monkeypatch, capsys):
+    monkeypatch.setattr("adaptive_comm.cli.write_clipboard", lambda _: pytest.fail("copied"))
+    monkeypatch.setattr("adaptive_comm.cli.interactive", lambda: False)
+
+    assert main(["hello"], client=FakeClient(full_payload())) == 0
+    assert "Copy a rewrite?" not in capsys.readouterr().err
+
+
+def test_no_copy_prompt_with_json(monkeypatch, capsys, copied):
+    assert main(["--json", "hello"], client=FakeClient(full_payload())) == 0
+    assert copied == []
+
+
+def test_brackets_in_text_are_shown_literally(monkeypatch, capsys):
+    monkeypatch.setattr("adaptive_comm.cli.interactive", lambda: False)
+    payload = {"tone_tags": ["[bold]"], "reactions": [dict(reaction(p.name), rewrite="See [link] and [red]x[/red]") for p in load_personas()]}
+
+    assert main(["Fix [TODO] now"], client=FakeClient(payload)) == 0
+    out = capsys.readouterr().out
+    assert "[TODO]" in out and "[link]" in out and "[red]x[/red]" in out and "[bold]" in out

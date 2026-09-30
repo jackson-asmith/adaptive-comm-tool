@@ -60,6 +60,9 @@ adaptive-comm -c -y    # send the clipboard as-is, without the editor
 # Or run with no arguments to open the editor empty, then paste or type
 adaptive-comm
 
+# After the results, type a persona's number to copy their rewrite
+# to the clipboard as clean text (Enter to finish).
+
 # Or pipe it in, or read it from a file (the whole input is one message)
 pbpaste | adaptive-comm
 adaptive-comm --file draft.txt

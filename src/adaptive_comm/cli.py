@@ -11,6 +11,7 @@ from pathlib import Path
 
 import anthropic
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -68,6 +69,16 @@ CLIPBOARD_COMMANDS = [
 ]
 
 
+# Clipboard writers, same order and platforms as the readers.
+CLIPBOARD_WRITE_COMMANDS = [
+    ["pbcopy"],
+    ["wl-copy"],
+    ["xclip", "-selection", "clipboard", "-i"],
+    ["xsel", "--clipboard", "--input"],
+    ["clip.exe"],
+]
+
+
 class ClipboardError(RuntimeError):
     """Raised when no clipboard tool is available or reading it fails."""
 
@@ -84,6 +95,17 @@ def read_clipboard() -> str:
         if result.returncode != 0:
             raise ClipboardError(f"{cmd[0]} failed: {result.stderr.strip() or f'exit code {result.returncode}'}")
         return result.stdout
+    raise ClipboardError("no clipboard tool found (install wl-clipboard or xclip on Linux)")
+
+
+def write_clipboard(text: str) -> None:
+    for cmd in CLIPBOARD_WRITE_COMMANDS:
+        if shutil.which(cmd[0]) is None:
+            continue
+        result = subprocess.run(cmd, input=text, capture_output=True, text=True, encoding="utf-8")
+        if result.returncode != 0:
+            raise ClipboardError(f"{cmd[0]} failed: {result.stderr.strip() or f'exit code {result.returncode}'}")
+        return
     raise ClipboardError("no clipboard tool found (install wl-clipboard or xclip on Linux)")
 
 
@@ -125,22 +147,65 @@ def score_style(score: int) -> str:
     return "bold red"
 
 
-def render(console: Console, analysis: MessageAnalysis) -> None:
-    tags = ", ".join(analysis.tone_tags) or "none"
-    console.print(Panel(analysis.message, title="Message", subtitle=f"tone: {tags}", expand=False))
+def render(console: Console, analysis: MessageAnalysis, first_number: int = 1) -> None:
+    tags = escape(", ".join(analysis.tone_tags) or "none")
+    console.print(Panel(escape(analysis.message), title="Message", subtitle=f"tone: {tags}", expand=False))
 
     table = Table(show_lines=True, expand=True)
+    table.add_column("#", justify="right", style="bold")
     table.add_column("Persona", style="cyan", no_wrap=True)
     table.add_column("Score", justify="center")
     table.add_column("Reaction", ratio=2)
     table.add_column("Try instead", ratio=3, style="green")
-    for r in analysis.reactions:
-        reaction = r.reaction
+    for number, r in enumerate(analysis.reactions, start=first_number):
+        reaction = escape(r.reaction)
         if r.friction_points:
-            reaction += "\n[dim]friction: " + "; ".join(r.friction_points) + "[/dim]"
-        table.add_row(r.persona, f"[{score_style(r.rapport_score)}]{r.rapport_score}/10[/]", reaction, r.rewrite)
+            reaction += "\n[dim]friction: " + escape("; ".join(r.friction_points)) + "[/dim]"
+        table.add_row(
+            str(number),
+            r.persona,
+            f"[{score_style(r.rapport_score)}]{r.rapport_score}/10[/]",
+            reaction,
+            escape(r.rewrite),
+        )
     console.print(table)
     console.print()
+
+
+def interactive() -> bool:
+    """True when a person is at the terminal on both ends (not piped or redirected)."""
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def offer_copy(err: Console, results: list[MessageAnalysis]) -> None:
+    """Let the user copy individual rewrites to the clipboard by number."""
+    choices = []
+    for i, analysis in enumerate(results, start=1):
+        for r in analysis.reactions:
+            label = r.persona if len(results) == 1 else f"message {i}, {r.persona}"
+            choices.append((label, r.rewrite))
+    if not choices:
+        return
+
+    prompt = f"Copy a rewrite? Enter 1-{len(choices)}, or press Enter to finish: "
+    while True:
+        try:
+            answer = err.input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            err.print()
+            return
+        if not answer:
+            return
+        if not answer.isdigit() or not 1 <= int(answer) <= len(choices):
+            err.print(f"[yellow]Enter a number from 1 to {len(choices)}.[/yellow]")
+            continue
+        label, rewrite = choices[int(answer) - 1]
+        try:
+            write_clipboard(rewrite)
+        except ClipboardError as e:
+            err.print(f"[red]error:[/red] could not copy: {e}")
+            return
+        err.print(f"[green]Copied {label}'s rewrite.[/green]")
 
 
 def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = None) -> int:
@@ -211,9 +276,12 @@ def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = Non
             err.print(f"[red]error:[/red] API request failed: {e}")
             return 1
 
-        results.append(analysis)
         if not args.json:
-            render(console, analysis)
+            render(console, analysis, first_number=sum(len(r.reactions) for r in results) + 1)
+        results.append(analysis)
+
+    if results and not args.json and interactive():
+        offer_copy(err, results)
 
     report = [r.model_dump() for r in results]
     if args.json:
