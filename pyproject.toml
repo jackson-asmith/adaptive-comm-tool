@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "adaptive-comm-tool"
-version = "0.3.0"
+version = "0.3.1"
 description = "See how a message lands with different people on your team, and how to rephrase it for each of them."
 readme = "README.md"
 license = "MIT"
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "coverage>=7.0", "ruff>=0.6"]
 
 [project.scripts]
 adaptive-comm = "adaptive_comm.cli:main"
@@ -28,3 +28,6 @@ packages = ["src/adaptive_comm"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src"]

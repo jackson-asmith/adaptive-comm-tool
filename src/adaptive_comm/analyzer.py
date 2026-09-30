@@ -60,6 +60,28 @@ class AnalysisError(RuntimeError):
     """Raised when Claude declines or returns something unusable."""
 
 
+class MissingCredentialsError(RuntimeError):
+    """Raised when the Anthropic SDK found no API key, token, or credentials profile."""
+
+
+def has_credentials(client: anthropic.Anthropic) -> bool:
+    """Whether the SDK resolved any credentials (env vars, `ant auth login` profile, or federation)."""
+    return any(getattr(client, attr, None) for attr in ("api_key", "auth_token", "credentials"))
+
+
+def response_text(content: list[Any]) -> str | None:
+    """The answer's text, ignoring anything before a server-side fallback.
+
+    If a safety classifier declines and a fallback model takes over, the content
+    holds a `fallback` marker block followed by the fallback model's answer. In
+    non-streaming responses the declined model's partial output is omitted, but
+    only reading after the last marker keeps this correct either way.
+    """
+    last_fallback = max((i for i, b in enumerate(content) if b.type == "fallback"), default=-1)
+    texts = [b.text for b in content[last_fallback + 1 :] if b.type == "text"]
+    return "".join(texts) if texts else None
+
+
 def build_schema(personas: list[Persona]) -> dict[str, Any]:
     """JSON schema for the structured output, with persona names pinned to an enum."""
     return {
@@ -103,7 +125,14 @@ class Analyzer:
         if not personas:
             raise ValueError("at least one persona is required")
         self.personas = personas
-        self.client = client or anthropic.Anthropic()
+        if client is None:
+            try:
+                client = anthropic.Anthropic()
+            except anthropic.CredentialsError as e:  # e.g. ANTHROPIC_PROFILE names a missing profile
+                raise MissingCredentialsError(str(e)) from e
+            if not has_credentials(client):
+                raise MissingCredentialsError("no Anthropic credentials found")
+        self.client = client
         self.model = model
         self.effort = effort
         self._schema = build_schema(personas)
@@ -129,7 +158,7 @@ class Analyzer:
         if response.stop_reason == "max_tokens":
             raise AnalysisError("response was cut off before it finished")
 
-        text = next((b.text for b in response.content if b.type == "text"), None)
+        text = response_text(response.content)
         if text is None:
             raise AnalysisError("response contained no text")
 

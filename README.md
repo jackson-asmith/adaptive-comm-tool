@@ -38,6 +38,8 @@ Wording varies from run to run.
 
 Requires Python 3.10+ and an [Anthropic API key](https://console.anthropic.com/).
 
+> **Privacy:** messages you analyze are sent through Anthropic's API, along with your persona definitions. Don't paste anything you wouldn't share with a third-party service. See [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy) for how API data is handled.
+
 ```bash
 git clone https://github.com/jackson-asmith/adaptive-comm-tool.git
 cd adaptive-comm-tool
@@ -93,6 +95,13 @@ adaptive-comm --list-personas
 | `-o, --output PATH` | Also write the JSON report to a file |
 | `--model` | Claude model (default `claude-opus-5-5`) |
 | `--effort` | Reasoning effort: `low`, `medium` (default), `high`, `xhigh`, `max` |
+| `--version` | Print the version and exit |
+
+`-y` only works together with `-c`, and `--each-line` only applies to `--file`, `-c`, or piped input. Anything else is rejected rather than silently ignored.
+
+Before sending anything, the tool checks that it has credentials and that the `-o` path is writable, so a typo can't waste a paid call. If a run over several messages is stopped partway (an API error, or Ctrl-C), the results that already finished are still shown and saved.
+
+**Exit codes:** `0` if every message was analyzed, `1` if any failed or the run was stopped or cancelled, `2` for usage errors (bad flags, missing file, no credentials).
 
 ## Define your own personas
 
@@ -128,7 +137,8 @@ src/adaptive_comm/
 ├── personas.yaml   # built-in personas
 ├── analyzer.py     # prompt, JSON schema, API call, response validation
 ├── editor.py       # in-terminal editor for reviewing a message before sending
-└── cli.py          # argument parsing and table/JSON output
+├── clipboard.py    # read and write the clipboard with the platform's tool
+└── cli.py          # argument parsing, input, and table/JSON output
 ```
 
 If a safety classifier declines a request, the API retries it on a fallback model instead of failing the whole run (server-side fallbacks).
@@ -137,7 +147,9 @@ If a safety classifier declines a request, the API retries it on a fallback mode
 
 ```bash
 pip install -e '.[dev]'
-pytest
+pytest                                   # run the tests
+coverage run -m pytest && coverage report  # with coverage
+ruff check src tests                     # lint
 ```
 
 The tests use a fake client, so they need no API key and make no network calls.

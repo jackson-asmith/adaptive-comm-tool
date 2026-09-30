@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
-import subprocess
+import os
 import sys
 from pathlib import Path
 
@@ -15,9 +14,26 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
-from adaptive_comm.analyzer import DEFAULT_EFFORT, DEFAULT_MODEL, AnalysisError, Analyzer, MessageAnalysis
+from adaptive_comm import __version__
+from adaptive_comm.analyzer import (
+    DEFAULT_EFFORT,
+    DEFAULT_MODEL,
+    AnalysisError,
+    Analyzer,
+    MessageAnalysis,
+    MissingCredentialsError,
+)
+from adaptive_comm.clipboard import ClipboardError, read_clipboard, write_clipboard
 from adaptive_comm.editor import edit_message
 from adaptive_comm.personas import PersonaFileError, load_personas
+
+
+class InputError(RuntimeError):
+    """Raised when the message can't be read (missing file, not text, clipboard failure)."""
+
+
+class Cancelled(Exception):
+    """Raised when the user cancels out of the editor."""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,9 +52,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--each-line",
         action="store_true",
-        help="treat each non-empty line of --file/stdin as a separate message",
+        help="treat each non-empty line of --file, -c, or piped input as a separate message",
     )
-    p.add_argument("-y", "--yes", action="store_true", help="send clipboard text without opening it for editing first")
+    p.add_argument("-y", "--yes", action="store_true", help="with -c, send the clipboard text without editing it first")
     p.add_argument("-p", "--personas", help="YAML file of personas (default: built-in set)")
     p.add_argument(
         "--only",
@@ -56,57 +72,42 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["low", "medium", "high", "xhigh", "max"],
         help=f"reasoning effort (default: {DEFAULT_EFFORT})",
     )
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
 
 
-# Clipboard readers to try, in order. The first one installed wins.
-CLIPBOARD_COMMANDS = [
-    ["pbpaste"],  # macOS
-    ["wl-paste", "--no-newline"],  # Linux, Wayland
-    ["xclip", "-selection", "clipboard", "-o"],  # Linux, X11
-    ["xsel", "--clipboard", "--output"],  # Linux, X11
-    ["powershell.exe", "-NoProfile", "-Command", "Get-Clipboard -Raw"],  # Windows, WSL
-]
+def check_flags(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Reject flag combinations that would otherwise be silently ignored."""
+    if args.yes and not args.clipboard:
+        parser.error("-y/--yes only applies with -c/--clipboard")
+    if args.each_line and args.messages and not (args.file or args.clipboard):
+        parser.error("--each-line applies to --file, -c, or piped input, not to messages given as arguments")
 
 
-# Clipboard writers, same order and platforms as the readers.
-CLIPBOARD_WRITE_COMMANDS = [
-    ["pbcopy"],
-    ["wl-copy"],
-    ["xclip", "-selection", "clipboard", "-i"],
-    ["xsel", "--clipboard", "--input"],
-    ["clip.exe"],
-]
+def output_path_problem(path: str) -> str | None:
+    """Why the report can't be written to path, or None if it looks writable."""
+    p = Path(path)
+    if p.is_dir():
+        return f"{path} is a directory"
+    parent = p.parent
+    if not parent.is_dir():
+        return f"directory {parent} does not exist"
+    if p.exists() and not os.access(p, os.W_OK):
+        return f"{path} is not writable"
+    if not p.exists() and not os.access(parent, os.W_OK):
+        return f"directory {parent} is not writable"
+    return None
 
 
-class ClipboardError(RuntimeError):
-    """Raised when no clipboard tool is available or reading it fails."""
-
-
-class Cancelled(Exception):
-    """Raised when the user cancels out of the editor."""
-
-
-def read_clipboard() -> str:
-    for cmd in CLIPBOARD_COMMANDS:
-        if shutil.which(cmd[0]) is None:
-            continue
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-        if result.returncode != 0:
-            raise ClipboardError(f"{cmd[0]} failed: {result.stderr.strip() or f'exit code {result.returncode}'}")
-        return result.stdout
-    raise ClipboardError("no clipboard tool found (install wl-clipboard or xclip on Linux)")
-
-
-def write_clipboard(text: str) -> None:
-    for cmd in CLIPBOARD_WRITE_COMMANDS:
-        if shutil.which(cmd[0]) is None:
-            continue
-        result = subprocess.run(cmd, input=text, capture_output=True, text=True, encoding="utf-8")
-        if result.returncode != 0:
-            raise ClipboardError(f"{cmd[0]} failed: {result.stderr.strip() or f'exit code {result.returncode}'}")
-        return
-    raise ClipboardError("no clipboard tool found (install wl-clipboard or xclip on Linux)")
+def read_file(path: str) -> str:
+    if path == "-":
+        return sys.stdin.read()
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise InputError(f"{path} is not a UTF-8 text file") from None
+    except OSError as e:
+        raise InputError(f"cannot read {path}: {e.strerror or e}") from None
 
 
 def read_messages(args: argparse.Namespace, err: Console) -> list[str]:
@@ -114,14 +115,17 @@ def read_messages(args: argparse.Namespace, err: Console) -> list[str]:
 
     text = None
     if args.clipboard:
-        text = read_clipboard()
+        try:
+            text = read_clipboard()
+        except ClipboardError as e:
+            raise InputError(f"could not read the clipboard: {e}") from None
         if not args.yes and not args.each_line and sys.stdin.isatty():
             err.print("[dim]From clipboard. Edit if needed.[/dim]")
             text = edit_message(text.strip())
             if text is None:
                 raise Cancelled
     elif args.file:
-        text = sys.stdin.read() if args.file == "-" else Path(args.file).read_text()
+        text = read_file(args.file)
     elif not messages:
         if sys.stdin.isatty():
             err.print("[dim]Paste or type your message below.[/dim]")
@@ -149,7 +153,8 @@ def score_style(score: int) -> str:
 
 def render(console: Console, analysis: MessageAnalysis, first_number: int = 1) -> None:
     tags = escape(", ".join(analysis.tone_tags) or "none")
-    console.print(Panel(escape(analysis.message), title="Message", subtitle=f"tone: {tags}", expand=False))
+    console.print(Panel(escape(analysis.message), title="Message", expand=False))
+    console.print(f"[dim]tone:[/dim] {tags}")
 
     table = Table(show_lines=True, expand=True)
     table.add_column("#", justify="right", style="bold")
@@ -184,8 +189,6 @@ def offer_copy(err: Console, results: list[MessageAnalysis]) -> None:
         for r in analysis.reactions:
             label = r.persona if len(results) == 1 else f"message {i}, {r.persona}"
             choices.append((label, r.rewrite))
-    if not choices:
-        return
 
     prompt = f"Copy a rewrite? Enter 1-{len(choices)}, or press Enter to finish: "
     while True:
@@ -209,21 +212,25 @@ def offer_copy(err: Console, results: list[MessageAnalysis]) -> None:
 
 
 def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    check_flags(parser, args)
     console = Console()
     err = Console(stderr=True)
+
+    def fail(message: str, code: int = 2) -> int:
+        err.print(f"[red]error:[/red] {message}")
+        return code
 
     try:
         personas = load_personas(args.personas)
     except PersonaFileError as e:
-        err.print(f"[red]error:[/red] {e}")
-        return 2
+        return fail(str(e))
 
     if args.only:
         unknown = sorted(set(args.only) - {p.name for p in personas})
         if unknown:
-            err.print(f"[red]error:[/red] unknown persona(s): {', '.join(unknown)}")
-            return 2
+            return fail(f"unknown persona(s): {', '.join(unknown)}")
         personas = [p for p in personas if p.name in args.only]
 
     if args.list_personas:
@@ -233,64 +240,73 @@ def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = Non
             console.print(f"  dislikes: {', '.join(p.dislikes)}")
         return 0
 
+    # Check everything that could fail before the user types a message or pays for a call.
+    if args.output and (problem := output_path_problem(args.output)):
+        return fail(f"can't write report: {problem}")
+    try:
+        analyzer = Analyzer(personas, client=client, model=args.model, effort=args.effort)
+    except MissingCredentialsError as e:
+        detail = "" if str(e) == "no Anthropic credentials found" else f"\n  ({e})"
+        return fail(f"no Anthropic credentials found. Set ANTHROPIC_API_KEY and try again.{detail}")
+
     try:
         messages = read_messages(args, err)
-    except ClipboardError as e:
-        err.print(f"[red]error:[/red] could not read the clipboard: {e}")
-        return 2
+    except InputError as e:
+        return fail(str(e))
     except Cancelled:
         err.print("Cancelled.")
         return 1
     if not messages:
         where = "the clipboard is empty" if args.clipboard else "pass it as an argument, pipe it in, or use --file or -c"
-        err.print(f"[red]error:[/red] no message given ({where})")
-        return 2
-
-    try:
-        analyzer = Analyzer(personas, client=client, model=args.model, effort=args.effort)
-    except anthropic.AnthropicError as e:
-        err.print(f"[red]error:[/red] could not create Anthropic client: {e}")
-        return 2
+        return fail(f"no message given ({where})")
 
     results: list[MessageAnalysis] = []
     failures = 0
+    stopped = None
     for msg in messages:
+        preview = " ".join(msg.split())
         try:
-            preview = " ".join(msg.split())
             with err.status(f"Analyzing: {preview[:60]}{'...' if len(preview) > 60 else ''}"):
                 analysis = analyzer.analyze(msg)
         except AnalysisError as e:
-            err.print(f"[red]skipped:[/red] {msg!r}: {e}")
+            err.print(f"[red]skipped:[/red] {preview[:60]!r}: {e}")
             failures += 1
             continue
         except anthropic.AuthenticationError:
-            err.print("[red]error:[/red] authentication failed. Check ANTHROPIC_API_KEY and try again.")
-            return 2
-        except TypeError as e:
-            # The SDK raises TypeError when it finds no credentials at all.
-            if "authentication method" not in str(e):
-                raise
-            err.print("[red]error:[/red] no Anthropic credentials found. Set ANTHROPIC_API_KEY and try again.")
-            return 2
+            stopped = "authentication failed. Check ANTHROPIC_API_KEY and try again."
+            break
         except anthropic.APIError as e:
-            err.print(f"[red]error:[/red] API request failed: {e}")
-            return 1
+            stopped = f"API request failed: {e}"
+            break
+        except KeyboardInterrupt:
+            stopped = "interrupted."
+            break
 
         if not args.json:
             render(console, analysis, first_number=sum(len(r.reactions) for r in results) + 1)
         results.append(analysis)
 
-    if results and not args.json and interactive():
+    # Anything that finished is still reported, even if a later message stopped the run.
+    if stopped:
+        err.print(f"[red]error:[/red] {stopped}")
+        if len(messages) > 1:
+            done = len(results) + failures
+            err.print(f"Stopped after {done} of {len(messages)} messages; completed results are kept.")
+
+    if results and not args.json and not stopped and interactive():
         offer_copy(err, results)
 
-    report = [r.model_dump() for r in results]
+    report = json.dumps([r.model_dump() for r in results], indent=2)
     if args.json:
-        print(json.dumps(report, indent=2))
-    if args.output:
-        Path(args.output).write_text(json.dumps(report, indent=2) + "\n")
+        print(report)
+    if args.output and results:
+        try:
+            Path(args.output).write_text(report + "\n", encoding="utf-8")
+        except OSError as e:
+            return fail(f"can't write report to {args.output}: {e.strerror or e}", code=1)
         err.print(f"Report written to {Path(args.output).resolve()}")
 
-    return 1 if failures and not results else 0
+    return 1 if failures or stopped else 0
 
 
 if __name__ == "__main__":
