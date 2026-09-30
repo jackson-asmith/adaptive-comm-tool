@@ -15,28 +15,24 @@ The same Slack message can read as efficient to one teammate and dismissive to a
 adaptive-comm "Re-run the integration tests. They're failing again."
 ```
 
-Illustrative output (abridged; the exact wording changes from run to run):
+![adaptive-comm output: the engineer scores the message 6/10, the PM and director 3/10, each with a reaction and a rewrite](docs/demo.webp)
 
-```
-╭─ Message ─────────────────────────────────────────────╮
-│ Re-run the integration tests. They're failing again.  │
-╰──────────────────────────── tone: direct, terse ──────╯
-┌────────────────────┬───────┬──────────────────────────────┬──────────────────────────────────────────┐
-│ Persona            │ Score │ Reaction                     │ Try instead                              │
-├────────────────────┼───────┼──────────────────────────────┼──────────────────────────────────────────┤
-│ pragmatic_engineer │ 6/10  │ Clear ask, but which suite,  │ Can you re-run the integration suite?    │
-│                    │       │ and failing how?             │ The payments tests failed twice today    │
-│                    │       │ friction: no failure details │ with timeouts: <link to CI run>          │
-├────────────────────┼───────┼──────────────────────────────┼──────────────────────────────────────────┤
-│ empathic_pm        │ 3/10  │ Feels like an order, and     │ Hey! Could you re-run the integration    │
-│                    │       │ "again" sounds like blame.   │ tests when you get a sec? They're still  │
-│                    │       │ friction: "again"; no please │ flaky and I'd like to rule out a blip.   │
-├────────────────────┼───────┼──────────────────────────────┼──────────────────────────────────────────┤
-│ vision_director    │ 5/10  │ Fine, but is this a one-off  │ Can you re-run the integration tests?    │
-│                    │       │ or a trend we should fix?    │ This is the third failure this week, so  │
-│                    │       │                              │ worth a ticket to fix the flakiness.     │
-└────────────────────┴───────┴──────────────────────────────┴──────────────────────────────────────────┘
-```
+<details>
+<summary>Same run as text</summary>
+
+**Tone:** terse, directive, frustrated
+
+| Persona | Score | Try instead |
+|---|---|---|
+| pragmatic_engineer | 6/10 | Integration tests are failing again. Can you re-run them? If they fail twice in a row, it's probably not flakiness and worth digging into. |
+| empathic_pm | 3/10 | Hey, the integration tests are failing again. Could you re-run them when you get a chance? Happy to help look into it if they're still red after that. Thanks! |
+| vision_director | 3/10 | Integration tests are failing again. Can you re-run them to unblock us for now? Since this keeps recurring, we should also have someone own a root-cause look so it stops slowing us down. |
+
+Each persona also gets a reaction in their own voice and a list of friction points. For example, the PM's reaction: *"This reads like an order barked at me, and 'again' sounds like a dig at whoever's been working on this."*
+
+</details>
+
+Wording varies from run to run.
 
 ## Install
 
