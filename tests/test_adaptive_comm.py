@@ -1,3 +1,4 @@
+import io
 import json
 from types import SimpleNamespace
 
@@ -119,14 +120,44 @@ def test_cli_rejects_unknown_persona():
     assert main(["--only", "nobody", "hello"], client=FakeClient()) == 2
 
 
-def test_cli_requires_messages():
+def full_payload():
+    return {"tone_tags": [], "reactions": [reaction(p.name) for p in load_personas()]}
+
+
+def analyzed(capsys):
+    return [m["message"] for m in json.loads(capsys.readouterr().out)]
+
+
+def test_cli_requires_messages(monkeypatch):
+    monkeypatch.setattr("sys.stdin", io.StringIO("   \n"))
     assert main([], client=FakeClient()) == 2
 
 
-def test_cli_reads_file(tmp_path, capsys):
+def test_cli_file_is_one_message(tmp_path, capsys):
+    f = tmp_path / "post.txt"
+    f.write_text("First paragraph.\n\nSecond paragraph (with parens) and it's got an apostrophe!\n")
+
+    assert main(["--json", "-f", str(f)], client=FakeClient(full_payload())) == 0
+    assert analyzed(capsys) == ["First paragraph.\n\nSecond paragraph (with parens) and it's got an apostrophe!"]
+
+
+def test_cli_each_line_splits(tmp_path, capsys):
     f = tmp_path / "msgs.txt"
     f.write_text("first\n\nsecond\n")
-    client = FakeClient({"tone_tags": [], "reactions": [reaction(p.name) for p in load_personas()]})
 
-    assert main(["--json", "-f", str(f)], client=client) == 0
-    assert [m["message"] for m in json.loads(capsys.readouterr().out)] == ["first", "second"]
+    assert main(["--json", "--each-line", "-f", str(f)], client=FakeClient(full_payload())) == 0
+    assert analyzed(capsys) == ["first", "second"]
+
+
+def test_cli_reads_piped_stdin(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO("Line one.\nLine two.\n"))
+
+    assert main(["--json"], client=FakeClient(full_payload())) == 0
+    assert analyzed(capsys) == ["Line one.\nLine two."]
+
+
+def test_cli_args_ignore_stdin(monkeypatch, capsys):
+    monkeypatch.setattr("sys.stdin", io.StringIO("should not be read"))
+
+    assert main(["--json", "from args"], client=FakeClient(full_payload())) == 0
+    assert analyzed(capsys) == ["from args"]

@@ -48,12 +48,19 @@ export ANTHROPIC_API_KEY=sk-ant-...
 ## Usage
 
 ```bash
-# One or more messages as arguments
+# Short messages as arguments (each argument is one message)
 adaptive-comm "Can we push the deadline to Friday?" "LGTM 👍"
 
-# A file with one message per line, or '-' for stdin
-adaptive-comm --file drafts.txt
-pbpaste | adaptive-comm --file -
+# Longer text: run with no arguments, paste, then press Ctrl-D.
+# No shell quoting, so !, apostrophes, and parentheses are all fine.
+adaptive-comm
+
+# Or pipe it in, or read it from a file (the whole input is one message)
+pbpaste | adaptive-comm
+adaptive-comm --file draft.txt
+
+# Batch mode: one message per line
+adaptive-comm --each-line --file drafts.txt
 
 # Only check against specific personas
 adaptive-comm --only empathic_pm --only vision_director "Let's revert this."
@@ -68,7 +75,8 @@ adaptive-comm --list-personas
 
 | Option | Description |
 |---|---|
-| `-f, --file PATH` | Read messages from a file, one per line (`-` for stdin) |
+| `-f, --file PATH` | Read one message from a file (`-` for stdin) |
+| `--each-line` | Treat each non-empty line of the file or stdin as its own message |
 | `-p, --personas PATH` | Use your own personas YAML file |
 | `--only NAME` | Only use this persona (repeatable) |
 | `--json` | Print JSON instead of tables |

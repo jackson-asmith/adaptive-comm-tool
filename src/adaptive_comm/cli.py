@@ -21,8 +21,17 @@ def build_parser() -> argparse.ArgumentParser:
         prog="adaptive-comm",
         description="See how a message lands with different personas, and get a rewrite for each.",
     )
-    p.add_argument("messages", nargs="*", help="message(s) to analyze")
-    p.add_argument("-f", "--file", help="read messages from a file, one per line ('-' for stdin)")
+    p.add_argument(
+        "messages",
+        nargs="*",
+        help="message(s) to analyze; if omitted, reads piped stdin or prompts you to paste one",
+    )
+    p.add_argument("-f", "--file", help="read a message from a file ('-' for stdin)")
+    p.add_argument(
+        "--each-line",
+        action="store_true",
+        help="treat each non-empty line of --file/stdin as a separate message",
+    )
     p.add_argument("-p", "--personas", help="YAML file of personas (default: built-in set)")
     p.add_argument(
         "--only",
@@ -43,11 +52,22 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def read_messages(args: argparse.Namespace) -> list[str]:
+def read_messages(args: argparse.Namespace, err: Console) -> list[str]:
     messages = list(args.messages)
+
+    text = None
     if args.file:
         text = sys.stdin.read() if args.file == "-" else Path(args.file).read_text()
-        messages += [line.strip() for line in text.splitlines() if line.strip()]
+    elif not messages:
+        if sys.stdin.isatty():
+            err.print("[dim]Paste your message, then press Ctrl-D on a new line:[/dim]")
+        text = sys.stdin.read()
+
+    if text is not None:
+        if args.each_line:
+            messages += [line.strip() for line in text.splitlines() if line.strip()]
+        elif text.strip():
+            messages.append(text.strip())
     return messages
 
 
@@ -102,9 +122,9 @@ def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = Non
             console.print(f"  dislikes: {', '.join(p.dislikes)}")
         return 0
 
-    messages = read_messages(args)
+    messages = read_messages(args, err)
     if not messages:
-        err.print("[red]error:[/red] no messages given (pass them as arguments or use --file)")
+        err.print("[red]error:[/red] no message given (pass it as an argument, pipe it in, or use --file)")
         return 2
 
     try:
@@ -117,7 +137,8 @@ def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = Non
     failures = 0
     for msg in messages:
         try:
-            with err.status(f"Analyzing: {msg[:60]}{'...' if len(msg) > 60 else ''}"):
+            preview = " ".join(msg.split())
+            with err.status(f"Analyzing: {preview[:60]}{'...' if len(preview) > 60 else ''}"):
                 analysis = analyzer.analyze(msg)
         except AnalysisError as e:
             err.print(f"[red]skipped:[/red] {msg!r}: {e}")
