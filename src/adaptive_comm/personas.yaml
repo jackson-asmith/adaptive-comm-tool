@@ -1,0 +1,20 @@
+# Default personas. Copy this file, edit it to match your own teammates,
+# and pass it with --personas my_team.yaml.
+
+pragmatic_engineer:
+  role: Senior software engineer
+  description: Heads-down builder who wants the what, the why, and the ask in as few words as possible.
+  values: [clarity, efficiency, technical precision]
+  dislikes: [ambiguity, unnecessary emotion, vague requests]
+
+empathic_pm:
+  role: Product manager
+  description: Keeps the team working well together and reads a lot into tone, especially in text.
+  values: [collaboration, positive tone, acknowledging other people's work]
+  dislikes: [bluntness, lack of emotional framing, commands without context]
+
+vision_director:
+  role: Director of engineering
+  description: Thinks in quarters and outcomes and wants to know how a request connects to the bigger picture.
+  values: [strategic framing, initiative, ownership]
+  dislikes: [tactical nitpicking, short-sighted tone, problems raised without a proposed path forward]
