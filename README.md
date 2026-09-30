@@ -51,8 +51,11 @@ export ANTHROPIC_API_KEY=sk-ant-...
 # Short messages as arguments (each argument is one message)
 adaptive-comm "Can we push the deadline to Friday?" "LGTM 👍"
 
-# Longer text: run with no arguments, paste, then press Ctrl-D.
+# Longer text: copy it, then read it straight from the clipboard.
 # No shell quoting, so !, apostrophes, and parentheses are all fine.
+adaptive-comm -c
+
+# Or run with no arguments, paste, and press Ctrl-D
 adaptive-comm
 
 # Or pipe it in, or read it from a file (the whole input is one message)
@@ -75,6 +78,7 @@ adaptive-comm --list-personas
 
 | Option | Description |
 |---|---|
+| `-c, --clipboard` | Read the message from the clipboard (macOS, Linux with wl-clipboard or xclip, Windows/WSL) |
 | `-f, --file PATH` | Read one message from a file (`-` for stdin) |
 | `--each-line` | Treat each non-empty line of the file or stdin as its own message |
 | `-p, --personas PATH` | Use your own personas YAML file |

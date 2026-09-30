@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -26,7 +28,9 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="*",
         help="message(s) to analyze; if omitted, reads piped stdin or prompts you to paste one",
     )
-    p.add_argument("-f", "--file", help="read a message from a file ('-' for stdin)")
+    source = p.add_mutually_exclusive_group()
+    source.add_argument("-f", "--file", help="read a message from a file ('-' for stdin)")
+    source.add_argument("-c", "--clipboard", action="store_true", help="read the message from the clipboard")
     p.add_argument(
         "--each-line",
         action="store_true",
@@ -52,15 +56,42 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+# Clipboard readers to try, in order. The first one installed wins.
+CLIPBOARD_COMMANDS = [
+    ["pbpaste"],  # macOS
+    ["wl-paste", "--no-newline"],  # Linux, Wayland
+    ["xclip", "-selection", "clipboard", "-o"],  # Linux, X11
+    ["xsel", "--clipboard", "--output"],  # Linux, X11
+    ["powershell.exe", "-NoProfile", "-Command", "Get-Clipboard -Raw"],  # Windows, WSL
+]
+
+
+class ClipboardError(RuntimeError):
+    """Raised when no clipboard tool is available or reading it fails."""
+
+
+def read_clipboard() -> str:
+    for cmd in CLIPBOARD_COMMANDS:
+        if shutil.which(cmd[0]) is None:
+            continue
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if result.returncode != 0:
+            raise ClipboardError(f"{cmd[0]} failed: {result.stderr.strip() or f'exit code {result.returncode}'}")
+        return result.stdout
+    raise ClipboardError("no clipboard tool found (install wl-clipboard or xclip on Linux)")
+
+
 def read_messages(args: argparse.Namespace, err: Console) -> list[str]:
     messages = list(args.messages)
 
     text = None
-    if args.file:
+    if args.clipboard:
+        text = read_clipboard()
+    elif args.file:
         text = sys.stdin.read() if args.file == "-" else Path(args.file).read_text()
     elif not messages:
         if sys.stdin.isatty():
-            err.print("[dim]Paste your message, then press Ctrl-D on a new line:[/dim]")
+            err.print("[dim]Paste your message, then press Ctrl-D on a new line (or copy it and run with -c):[/dim]")
         text = sys.stdin.read()
 
     if text is not None:
@@ -122,9 +153,14 @@ def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = Non
             console.print(f"  dislikes: {', '.join(p.dislikes)}")
         return 0
 
-    messages = read_messages(args, err)
+    try:
+        messages = read_messages(args, err)
+    except ClipboardError as e:
+        err.print(f"[red]error:[/red] could not read the clipboard: {e}")
+        return 2
     if not messages:
-        err.print("[red]error:[/red] no message given (pass it as an argument, pipe it in, or use --file)")
+        where = "the clipboard is empty" if args.clipboard else "pass it as an argument, pipe it in, or use --file or -c"
+        err.print(f"[red]error:[/red] no message given ({where})")
         return 2
 
     try:

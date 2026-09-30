@@ -161,3 +161,26 @@ def test_cli_args_ignore_stdin(monkeypatch, capsys):
 
     assert main(["--json", "from args"], client=FakeClient(full_payload())) == 0
     assert analyzed(capsys) == ["from args"]
+
+
+def test_cli_reads_clipboard(monkeypatch, capsys):
+    monkeypatch.setattr("adaptive_comm.cli.read_clipboard", lambda: "Para one!\n\nPara (two).\n")
+    monkeypatch.setattr("sys.stdin", io.StringIO("should not be read"))
+
+    assert main(["--json", "-c"], client=FakeClient(full_payload())) == 0
+    assert analyzed(capsys) == ["Para one!\n\nPara (two)."]
+
+
+def test_cli_empty_clipboard(monkeypatch):
+    monkeypatch.setattr("adaptive_comm.cli.read_clipboard", lambda: "  \n")
+    assert main(["-c"], client=FakeClient()) == 2
+
+
+def test_cli_clipboard_tool_missing(monkeypatch):
+    monkeypatch.setattr("adaptive_comm.cli.shutil.which", lambda _: None)
+    assert main(["-c"], client=FakeClient()) == 2
+
+
+def test_cli_clipboard_and_file_conflict():
+    with pytest.raises(SystemExit):
+        main(["-c", "-f", "x.txt"], client=FakeClient())
