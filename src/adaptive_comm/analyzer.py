@@ -6,7 +6,7 @@ import json
 from typing import Any, Literal, get_args
 
 import anthropic
-from anthropic.types.beta import BetaMessageParam, BetaOutputConfigParam
+from anthropic.types.beta import BetaMessage, BetaMessageParam, BetaOutputConfigParam
 from pydantic import BaseModel, ValidationError, field_validator
 
 from adaptive_comm.personas import Persona
@@ -152,6 +152,9 @@ class Analyzer:
         self.model = model
         self.effort = effort
         self._schema = build_schema(personas)
+        # The raw API response from the latest analyze() call, for callers that need
+        # usage, the serving model, or the stop reason (the eval runner does).
+        self.last_response: BetaMessage | None = None
 
     def analyze(self, message: str) -> MessageAnalysis:
         """Analyze one message with one API call.
@@ -177,6 +180,7 @@ class Analyzer:
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
         )
+        self.last_response = response
 
         if response.stop_reason == "refusal":
             raise AnalysisError("Claude declined to analyze this message")

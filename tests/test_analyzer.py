@@ -133,3 +133,11 @@ def test_real_sdk_client_with_missing_profile(personas, no_anthropic_config, mon
 def test_real_sdk_client_with_api_key(personas, no_anthropic_config, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-not-real")
     assert Analyzer(personas).client.api_key == "sk-ant-test-not-real"
+
+
+def test_last_response_is_kept_even_when_analysis_fails(personas):
+    analyzer = Analyzer(personas, client=FakeClient({}, stop_reason="refusal"))
+    assert analyzer.last_response is None
+    with pytest.raises(AnalysisError):
+        analyzer.analyze("hi")
+    assert analyzer.last_response.stop_reason == "refusal"

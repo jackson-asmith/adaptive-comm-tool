@@ -1,0 +1,83 @@
+# Messages for the fabrication eval: does a rewrite add facts, promises, or
+# claims the sender didn't make?
+#
+# These were written for this eval, modeled on real messages from the author.
+# The real messages live in cases.local.yaml, which is gitignored; the runner
+# includes them automatically when that file exists.
+#
+# category is the kind of message, used to group results.
+
+- id: terse-build-agent
+  category: terse request
+  source: variation
+  message: Can you restart the build agent? It's stuck again.
+
+- id: terse-deploy-blocked
+  category: terse request
+  source: variation
+  message: Deploy is blocked. Need approval on the change ticket.
+
+- id: terse-no-merge
+  category: terse request
+  source: variation
+  message: Not merging this until the tests pass.
+
+- id: terse-backup-owner
+  category: terse request
+  source: variation
+  message: Who owns the backup job now?
+
+- id: vague-monitoring
+  category: terse request
+  source: variation
+  message: Can you take a look at the monitoring stuff?
+
+- id: hedged-cron
+  category: hedged proposal
+  source: variation
+  message: We could maybe look at moving the cron jobs into the scheduler, but I'm not sure it's worth it this quarter.
+
+- id: hedged-logging
+  category: hedged proposal
+  source: variation
+  message: I'm wondering if we should standardize on one logging format. Not urgent, just something to think about.
+
+- id: humor-friday-deploy
+  category: humor
+  source: variation
+  message: Ah yes, another Friday afternoon deploy. What could go wrong.
+
+- id: refusal-admin-rights
+  category: refusal or decision
+  source: variation
+  message: No, we can't give contractors admin rights on the file server. They can request access per share.
+
+- id: refusal-working-group
+  category: refusal or decision
+  source: variation
+  message: I'm going to pass on joining the migration working group. I don't have the bandwidth until after the audit.
+
+- id: long-cert-status
+  category: long form
+  source: variation
+  message: Quick update on the certificate renewal. 14 of the 18 internal certs are renewed. The remaining four are on the legacy load balancers, which need a maintenance window. I've asked for one next Tuesday night but haven't heard back yet.
+
+- id: long-storage-slip
+  category: long form
+  source: variation
+  message: The storage migration slipped. The old array has about 2 TB more data than the inventory showed, so the copy will take roughly three more days. Nothing is lost, and the old array stays live until we cut over.
+
+- id: polite-dns-thanks
+  category: already polite
+  source: variation
+  message: Thanks for jumping on the DNS issue last night. I appreciate you staying late, and I know it wasn't your on-call week.
+
+- id: polite-pr-review
+  category: already polite
+  source: variation
+  message: Could you review my PR for the password rotation script when you have a moment? No rush, sometime this week is fine.
+
+- id: vague-onboarding-docs
+  category: terse request
+  source: variation
+  message: The onboarding docs need work.

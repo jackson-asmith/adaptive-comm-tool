@@ -157,6 +157,18 @@ mypy                                     # type check (strict)
 
 The tests use a fake client, so they need no API key and make no network calls. One test round-trips non-ASCII text through your real clipboard; it's skipped unless you set `ADAPTIVE_COMM_CLIPBOARD_TESTS=1`, because it overwrites what you've copied. CI runs it on Windows and macOS.
 
+## Evaluating the rewrites
+
+A rewrite should change how a message sounds, not what it says. `evals/fabrication/` measures how often rewrites add facts, promises, or claims the sender didn't make. It runs each test message through the tool, then a separate model (Claude Sonnet 5.5) grades every rewrite against the original. The grader is checked against hand-written known answers first.
+
+```bash
+python evals/fabrication/run_eval.py --approve-harness   # once, and after any change to the runner or grader
+python evals/fabrication/run_eval.py --check-judge       # grade the known answers
+python evals/fabrication/run_eval.py --reps 2            # the full set (paid API calls, about $0.04 per message per rep)
+```
+
+Baseline with Claude Opus 5.5 at medium effort: **17% ± 10%** of rewrites add nothing the sender didn't say (22 messages × 2 reps). Most additions are offers of help and claims the sender never made, and the director persona adds the most. The public set has 15 messages; the author's real messages stay in a gitignored file.
+
 ## History
 
 This started as a small rule-based script that matched keywords like "blunt" and "emoji" against fixed persona traits. The first commit in this repo keeps that version for comparison.

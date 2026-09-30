@@ -1,0 +1,104 @@
+# Known answers for checking the judge before trusting it. Each rewrite was
+# written by hand with a known verdict: faithful rewrites must pass, rewrites
+# with a planted addition must be caught, and non-answers must fail the
+# keeps_meaning check (null means that verdict isn't checked). Run with: python evals/fabrication/run_eval.py --check-judge
+
+- original: Can you restart the build agent? It's stuck again.
+  rewrite: Could you restart the build agent when you get a chance? It looks like it's stuck again.
+  expect: {additions: false, keeps_meaning: true}
+  note: faithful, softer tone
+
+- original: Can you restart the build agent? It's stuck again.
+  rewrite: Could you restart the build agent? It's been stuck since the 2 a.m. nightly build.
+  expect: {additions: true, keeps_meaning: true}
+  note: planted fact (since 2 a.m.)
+
+- original: Can you restart the build agent? It's stuck again.
+  rewrite: Could you restart the build agent? It's stuck again, and I'll open a ticket to find the root cause.
+  expect: {additions: true, keeps_meaning: true}
+  note: planted promise
+
+- original: Re-run the integration tests. They're failing again.
+  rewrite: Integration tests are failing again. Can you re-run them? Since this keeps recurring, let's find the root cause so it stops slowing us down.
+  expect: {additions: true, keeps_meaning: true}
+  note: added idea, nothing lost (additions don't fail keeps_meaning)
+
+- original: Can you restart the build agent? It's stuck again.
+  rewrite: ""
+  expect: {additions: null, keeps_meaning: false}
+  note: empty rewrite
+
+- original: Can you restart the build agent? It's stuck again.
+  rewrite: I don't know.
+  expect: {additions: null, keeps_meaning: false}
+  note: non-answer
+
+- original: We could maybe look at moving the cron jobs into the scheduler, but I'm not sure it's worth it this quarter.
+  rewrite: One option might be moving the cron jobs into the scheduler, though I'm not convinced it's worth doing this quarter.
+  expect: {additions: false, keeps_meaning: true}
+  note: faithful, hedge preserved
+
+- original: We could maybe look at moving the cron jobs into the scheduler, but I'm not sure it's worth it this quarter.
+  rewrite: We should move the cron jobs into the scheduler next quarter. It will cut failed runs in half.
+  expect: {additions: true, keeps_meaning: false}
+  note: hedge hardened into a decision, plus a planted fact
+
+- original: No, we can't give contractors admin rights on the file server. They can request access per share.
+  rewrite: Unfortunately we can't give contractors admin rights on the file server, but they can request access to individual shares.
+  expect: {additions: false, keeps_meaning: true}
+  note: faithful refusal
+
+- original: No, we can't give contractors admin rights on the file server. They can request access per share.
+  rewrite: We can't give contractors admin rights on the file server, but I'll make sure their per-share requests are approved within a day.
+  expect: {additions: true, keeps_meaning: true}
+  note: planted promise and timeline
+
+- original: No, we can't give contractors admin rights on the file server. They can request access per share.
+  rewrite: Thanks for the update on the certificate renewal, that sounds good.
+  expect: {additions: null, keeps_meaning: false}
+  note: answers something else entirely
+
+- original: Quick update on the certificate renewal. 14 of the 18 internal certs are renewed. The remaining four are on the legacy load balancers, which need a maintenance window. I've asked for one next Tuesday night but haven't heard back yet.
+  rewrite: Update on the certificate renewal - 14 of our 18 internal certs are done. The last four are on the legacy load balancers and need a maintenance window. I've requested one for next Tuesday night and am still waiting to hear back.
+  expect: {additions: false, keeps_meaning: true}
+  note: faithful status update
+
+- original: Quick update on the certificate renewal. 14 of the 18 internal certs are renewed. The remaining four are on the legacy load balancers, which need a maintenance window. I've asked for one next Tuesday night but haven't heard back yet.
+  rewrite: Update on the certificate renewal - 14 of our 18 internal certs are done. The last four are on the legacy load balancers, and the maintenance window for next Tuesday night has been approved.
+  expect: {additions: true, keeps_meaning: false}
+  note: changed fact (window approved)
+
+- original: Ah yes, another Friday afternoon deploy. What could go wrong.
+  rewrite: Another Friday afternoon deploy. What could possibly go wrong?
+  expect: {additions: false, keeps_meaning: true}
+  note: faithful, sarcasm kept
+
+- original: Ah yes, another Friday afternoon deploy. What could go wrong.
+  rewrite: Another Friday afternoon deploy, even though the last two took down production.
+  expect: {additions: true, keeps_meaning: null}
+  note: planted history
+
+- original: We could maybe look at moving the cron jobs into the scheduler, but I'm not sure it's worth it this quarter.
+  rewrite: It could be a good moment to look at moving the cron jobs into the scheduler, though I'm not sure it's worth doing this quarter. Curious what everyone thinks.
+  expect: {additions: false, keeps_meaning: true}
+  note: same-strength hedge plus asking for input (both allowed)
+
+- original: The storage migration slipped. The old array has about 2 TB more data than the inventory showed, so the copy will take roughly three more days. Nothing is lost, and the old array stays live until we cut over.
+  rewrite: The storage migration slipped by roughly three days. The old array has about 2 TB more data than the inventory showed, so the copy needs the extra time. Nothing is lost, and the old array stays live until we cut over.
+  expect: {additions: true, keeps_meaning: true}
+  note: sharpened detail is an addition, not lost meaning
+
+- original: Ah yes, another Friday afternoon deploy. What could go wrong.
+  rewrite: We're doing another deploy on a Friday afternoon, and I'm a little worried it could go badly.
+  expect: {additions: null, keeps_meaning: true}
+  note: joke restated literally (humor miss alone is not lost meaning)
+
+- original: We could maybe look at moving the cron jobs into the scheduler, but I'm not sure it's worth it this quarter.
+  rewrite: We could maybe look together at moving the cron jobs into the scheduler, but I'm not sure it's worth it this quarter.
+  expect: {additions: false, keeps_meaning: true}
+  note: implied detail ("together") is not listed as an addition
+
+- original: If we end up moving the cron jobs into the scheduler, we might consider adding alerting for failed runs.
+  rewrite: As we move the cron jobs into the scheduler, we might consider adding alerting for failed runs.
+  expect: {additions: true, keeps_meaning: null}
+  note: conditional presented as already happening
