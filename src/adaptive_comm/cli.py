@@ -19,6 +19,7 @@ from adaptive_comm import __version__
 from adaptive_comm.analyzer import (
     DEFAULT_EFFORT,
     DEFAULT_MODEL,
+    EFFORT_LEVELS,
     AnalysisError,
     Analyzer,
     MessageAnalysis,
@@ -32,7 +33,7 @@ from adaptive_comm.personas import Persona, PersonaFileError, load_personas
 class CLIError(Exception):
     """A problem to report to the user as `error: <message>`, exiting with `code`."""
 
-    def __init__(self, message: str, code: int = 2):
+    def __init__(self, message: str, code: int = 2) -> None:
         super().__init__(message)
         self.code = code
 
@@ -78,7 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--effort",
         default=DEFAULT_EFFORT,
-        choices=["low", "medium", "high", "xhigh", "max"],
+        choices=EFFORT_LEVELS,
         help=f"reasoning effort (default: {DEFAULT_EFFORT})",
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")

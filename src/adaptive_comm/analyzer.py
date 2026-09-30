@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal, get_args
 
 import anthropic
+from anthropic.types.beta import BetaMessageParam, BetaOutputConfigParam
 from pydantic import BaseModel, ValidationError, field_validator
 
 from adaptive_comm.personas import Persona
 
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+EFFORT_LEVELS: tuple[Effort, ...] = get_args(Effort)
+
 DEFAULT_MODEL = "claude-opus-5-5"
-DEFAULT_EFFORT = "medium"
+DEFAULT_EFFORT: Effort = "medium"
 
 SYSTEM_PROMPT = """\
 You are a workplace communication coach. You will be given a message someone \
@@ -38,6 +42,8 @@ different directions. Judge only the text you are given."""
 
 
 class PersonaReaction(BaseModel):
+    """How one persona reacts to a message, and a rewrite aimed at them."""
+
     persona: str
     rapport_score: int
     reaction: str
@@ -47,10 +53,13 @@ class PersonaReaction(BaseModel):
     @field_validator("rapport_score")
     @classmethod
     def _clamp(cls, v: int) -> int:
+        """Keep scores in 0-10 even if the model strays outside the range."""
         return max(0, min(10, v))
 
 
 class MessageAnalysis(BaseModel):
+    """The result for one message: its tone and one reaction per persona, in persona order."""
+
     message: str
     tone_tags: list[str]
     reactions: list[PersonaReaction]
@@ -115,13 +124,20 @@ def build_user_prompt(message: str, personas: list[Persona]) -> str:
 
 
 class Analyzer:
+    """Scores messages against a fixed set of personas using Claude.
+
+    Pass `client` to supply your own `anthropic.Anthropic` (or a test double).
+    Without one, a client is created from the environment, and
+    MissingCredentialsError is raised if no credentials can be found.
+    """
+
     def __init__(
         self,
         personas: list[Persona],
         client: anthropic.Anthropic | None = None,
         model: str = DEFAULT_MODEL,
-        effort: str = DEFAULT_EFFORT,
-    ):
+        effort: Effort = DEFAULT_EFFORT,
+    ) -> None:
         if not personas:
             raise ValueError("at least one persona is required")
         self.personas = personas
@@ -138,15 +154,24 @@ class Analyzer:
         self._schema = build_schema(personas)
 
     def analyze(self, message: str) -> MessageAnalysis:
+        """Analyze one message with one API call.
+
+        Raises AnalysisError if Claude declines or the response is unusable.
+        API errors from the SDK (anthropic.APIError) propagate unchanged.
+        """
+        messages: list[BetaMessageParam] = [
+            {"role": "user", "content": build_user_prompt(message, self.personas)},
+        ]
+        output_config: BetaOutputConfigParam = {
+            "effort": self.effort,
+            "format": {"type": "json_schema", "schema": self._schema},
+        }
         response = self.client.beta.messages.create(
             model=self.model,
             max_tokens=16000,
             system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": build_user_prompt(message, self.personas)}],
-            output_config={
-                "effort": self.effort,
-                "format": {"type": "json_schema", "schema": self._schema},
-            },
+            messages=messages,
+            output_config=output_config,
             # If a safety classifier declines, retry server-side on Anthropic's
             # recommended fallback model instead of failing the whole run.
             betas=["server-side-fallback-2026-07-01"],

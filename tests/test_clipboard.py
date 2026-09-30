@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -48,3 +49,30 @@ def test_tool_failure_is_reported(fake_tools, stderr, message):
 
     with pytest.raises(ClipboardError, match=message):
         read_clipboard()
+
+
+def test_read_normalizes_windows_line_endings(fake_tools):
+    fake_tools["installed"] = {"powershell.exe"}
+    fake_tools["result"].stdout = "line one\r\nline two\r\n"
+
+    assert read_clipboard() == "line one\nline two\n"
+
+
+def test_powershell_commands_force_utf8():
+    """Windows PowerShell would otherwise use the legacy code page and garble non-ASCII text."""
+    read_ps, write_ps = clipboard.READ_COMMANDS[-1], clipboard.WRITE_COMMANDS[-1]
+    assert read_ps[0] == write_ps[0] == "powershell.exe"
+    assert "-NonInteractive" in read_ps and "-NonInteractive" in write_ps
+    assert "OutputEncoding" in read_ps[-1] and "UTF8Encoding $false" in read_ps[-1]
+    assert "InputEncoding" in write_ps[-1] and "Set-Clipboard" in write_ps[-1]
+    assert not any(cmd[0] == "clip.exe" for cmd in clipboard.WRITE_COMMANDS)
+
+
+@pytest.mark.skipif(
+    not os.environ.get("ADAPTIVE_COMM_CLIPBOARD_TESTS"),
+    reason="uses the real clipboard; set ADAPTIVE_COMM_CLIPBOARD_TESTS=1 to run",
+)
+def test_real_clipboard_round_trip():
+    text = "It\u2019s \u201cquoted\u201d \u2014 caf\u00e9, na\u00efve, \U0001f44d\nSecond line (with [brackets])!"
+    write_clipboard(text)
+    assert read_clipboard().rstrip("\n") == text

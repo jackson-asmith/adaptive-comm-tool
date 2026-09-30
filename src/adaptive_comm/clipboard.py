@@ -5,13 +5,19 @@ from __future__ import annotations
 import shutil
 import subprocess
 
+# Windows PowerShell 5.1 pipes text in the console's legacy code page, which garbles
+# anything outside ASCII (curly quotes, dashes, emoji). Force UTF-8, without a byte
+# order mark, in both directions. clip.exe is avoided for the same reason.
+_UTF8 = "(New-Object System.Text.UTF8Encoding $false)"
+_POWERSHELL = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command"]
+
 # Tried in order; the first one installed wins.
 READ_COMMANDS = [
     ["pbpaste"],  # macOS
     ["wl-paste", "--no-newline"],  # Linux, Wayland
     ["xclip", "-selection", "clipboard", "-o"],  # Linux, X11
     ["xsel", "--clipboard", "--output"],  # Linux, X11
-    ["powershell.exe", "-NoProfile", "-Command", "Get-Clipboard -Raw"],  # Windows, WSL
+    [*_POWERSHELL, f"[Console]::OutputEncoding = {_UTF8}; Get-Clipboard -Raw"],  # Windows, WSL
 ]
 
 WRITE_COMMANDS = [
@@ -19,7 +25,7 @@ WRITE_COMMANDS = [
     ["wl-copy"],
     ["xclip", "-selection", "clipboard", "-i"],
     ["xsel", "--clipboard", "--input"],
-    ["clip.exe"],
+    [*_POWERSHELL, f"[Console]::InputEncoding = {_UTF8}; Set-Clipboard -Value ([Console]::In.ReadToEnd())"],
 ]
 
 NO_TOOL = "no clipboard tool found (install wl-clipboard or xclip on Linux)"
@@ -45,8 +51,10 @@ def _run(commands: list[list[str]], input: str | None = None) -> str:
 
 
 def read_clipboard() -> str:
-    return _run(READ_COMMANDS)
+    """The clipboard's text, with Windows line endings normalized to \\n."""
+    return _run(READ_COMMANDS).replace("\r\n", "\n")
 
 
 def write_clipboard(text: str) -> None:
+    """Put text on the clipboard."""
     _run(WRITE_COMMANDS, input=text)

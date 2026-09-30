@@ -15,12 +15,24 @@ concurrency:
 
 jobs:
   test:
-    name: Tests (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # Windows and macOS also run the real clipboard round trip, which checks
+        # that non-ASCII text survives PowerShell / pbcopy intact.
+        include:
+          - os: windows-latest
+            python-version: "3.14"
+            clipboard-tests: "1"
+          - os: macos-latest
+            python-version: "3.14"
+            clipboard-tests: "1"
+    env:
+      ADAPTIVE_COMM_CLIPBOARD_TESTS: ${{ matrix.clipboard-tests }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -37,7 +49,7 @@ jobs:
           coverage report
 
   lint:
-    name: Lint and format
+    name: Lint, format, and types
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -52,3 +64,5 @@ jobs:
         run: |
           ruff check --output-format=github src tests
           ruff format --check src tests
+      - name: Mypy (strict)
+        run: mypy

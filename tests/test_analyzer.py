@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 import pytest
-from conftest import FakeClient, fallback_block, full_payload, reaction, text_block
+from helpers import FakeClient, fallback_block, full_payload, reaction, text_block
 
 from adaptive_comm import analyzer as analyzer_module
 from adaptive_comm.analyzer import (

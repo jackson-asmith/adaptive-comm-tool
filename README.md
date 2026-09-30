@@ -152,9 +152,10 @@ pip install -e '.[dev]'
 pytest                                   # run the tests
 coverage run -m pytest && coverage report  # with coverage
 ruff check src tests && ruff format --check src tests  # lint and format
+mypy                                     # type check (strict)
 ```
 
-The tests use a fake client, so they need no API key and make no network calls.
+The tests use a fake client, so they need no API key and make no network calls. One test round-trips non-ASCII text through your real clipboard; it's skipped unless you set `ADAPTIVE_COMM_CLIPBOARD_TESTS=1`, because it overwrites what you've copied. CI runs it on Windows and macOS.
 
 ## History
 

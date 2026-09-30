@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.input import Input
-from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.key_binding import KeyBindings, KeyPressEvent
 from prompt_toolkit.output import Output
 
 TOOLBAR = " Ctrl-S: send   Ctrl-C: cancel   Enter: new line "
@@ -15,11 +15,11 @@ def _bindings() -> KeyBindings:
 
     @kb.add("c-s")
     @kb.add("escape", "enter")
-    def _send(event):
+    def _send(event: KeyPressEvent) -> None:
         event.current_buffer.validate_and_handle()
 
     @kb.add("c-c")
-    def _cancel(event):
+    def _cancel(event: KeyPressEvent) -> None:
         event.app.exit(exception=KeyboardInterrupt)
 
     return kb

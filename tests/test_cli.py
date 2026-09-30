@@ -1,11 +1,12 @@
 import io
 import json
+import sys
 from types import SimpleNamespace
 
 import anthropic
 import httpx2 as httpx
 import pytest
-from conftest import FakeClient, TTYInput, full_payload, reaction
+from helpers import FakeClient, TTYInput, full_payload, reaction
 
 from adaptive_comm import __version__, cli, clipboard
 from adaptive_comm import analyzer as analyzer_module
@@ -271,6 +272,7 @@ def test_long_error_messages_are_not_split(tmp_path, capsys, monkeypatch):
     assert f"directory {deep.parent} does not exist" in capsys.readouterr().err
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix file permissions")
 def test_output_path_problem_permissions(tmp_path):
     locked = tmp_path / "locked"
     locked.mkdir()

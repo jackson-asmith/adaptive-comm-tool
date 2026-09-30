@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "coverage>=7.0", "ruff==0.16.9"]  # pinned so local and CI lint agree
+# ruff and mypy are pinned so local and CI checks agree.
+dev = ["pytest>=8.0", "coverage>=7.0", "ruff==0.16.9", "mypy==2.3.1", "types-PyYAML"]
 
 [project.scripts]
 adaptive-comm = "adaptive_comm.cli:main"
@@ -40,6 +41,11 @@ select = ["E", "F", "I", "B", "SIM", "UP", "RET", "C90", "PLW", "RUF"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
+
+[tool.mypy]
+files = ["src"]
+python_version = "3.10"
+strict = true
 
 [tool.coverage.run]
 source = ["src"]

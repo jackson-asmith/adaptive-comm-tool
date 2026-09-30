@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 
 class Persona(BaseModel):
+    """Someone who might read a message: what they do, and what they value and dislike."""
+
     model_config = ConfigDict(extra="forbid")
 
     name: str
