@@ -4,4 +4,4 @@ from adaptive_comm.analyzer import Analyzer, MessageAnalysis, PersonaReaction
 from adaptive_comm.personas import Persona, load_personas
 
 __all__ = ["Analyzer", "MessageAnalysis", "Persona", "PersonaReaction", "load_personas"]
-__version__ = "0.2.0"
+__version__ = "0.3.0"

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "adaptive-comm-tool"
-version = "0.2.0"
+version = "0.3.0"
 description = "See how a message lands with different people on your team, and how to rephrase it for each of them."
 readme = "README.md"
 license = "MIT"
