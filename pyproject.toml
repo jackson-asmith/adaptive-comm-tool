@@ -29,5 +29,17 @@ packages = ["src/adaptive_comm"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, bugbear, simplify, pyupgrade, returns,
+# complexity, pylint warnings, and ruff's own rules.
+select = ["E", "F", "I", "B", "SIM", "UP", "RET", "C90", "PLW", "RUF"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
 [tool.coverage.run]
 source = ["src"]

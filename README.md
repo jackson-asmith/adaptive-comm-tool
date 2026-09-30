@@ -149,7 +149,7 @@ If a safety classifier declines a request, the API retries it on a fallback mode
 pip install -e '.[dev]'
 pytest                                   # run the tests
 coverage run -m pytest && coverage report  # with coverage
-ruff check src tests                     # lint
+ruff check src tests && ruff format --check src tests  # lint and format
 ```
 
 The tests use a fake client, so they need no API key and make no network calls.

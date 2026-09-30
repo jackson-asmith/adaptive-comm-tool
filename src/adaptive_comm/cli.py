@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import anthropic
@@ -25,10 +26,18 @@ from adaptive_comm.analyzer import (
 )
 from adaptive_comm.clipboard import ClipboardError, read_clipboard, write_clipboard
 from adaptive_comm.editor import edit_message
-from adaptive_comm.personas import PersonaFileError, load_personas
+from adaptive_comm.personas import Persona, PersonaFileError, load_personas
 
 
-class InputError(RuntimeError):
+class CLIError(Exception):
+    """A problem to report to the user as `error: <message>`, exiting with `code`."""
+
+    def __init__(self, message: str, code: int = 2):
+        super().__init__(message)
+        self.code = code
+
+
+class InputError(CLIError):
     """Raised when the message can't be read (missing file, not text, clipboard failure)."""
 
 
@@ -110,31 +119,37 @@ def read_file(path: str) -> str:
         raise InputError(f"cannot read {path}: {e.strerror or e}") from None
 
 
-def read_messages(args: argparse.Namespace, err: Console) -> list[str]:
-    messages = list(args.messages)
+def edit_or_cancel(initial: str = "") -> str:
+    text = edit_message(initial)
+    if text is None:
+        raise Cancelled
+    return text
 
-    text = None
+
+def read_input_text(args: argparse.Namespace, err: Console) -> str | None:
+    """Text from the clipboard, a file, the editor, or a pipe; None if messages came as arguments."""
     if args.clipboard:
         try:
             text = read_clipboard()
         except ClipboardError as e:
             raise InputError(f"could not read the clipboard: {e}") from None
-        if not args.yes and not args.each_line and sys.stdin.isatty():
-            err.print("[dim]From clipboard. Edit if needed.[/dim]")
-            text = edit_message(text.strip())
-            if text is None:
-                raise Cancelled
-    elif args.file:
-        text = read_file(args.file)
-    elif not messages:
-        if sys.stdin.isatty():
-            err.print("[dim]Paste or type your message below.[/dim]")
-            text = edit_message()
-            if text is None:
-                raise Cancelled
-        else:
-            text = sys.stdin.read()
+        if args.yes or args.each_line or not sys.stdin.isatty():
+            return text
+        err.print("[dim]From clipboard. Edit if needed.[/dim]")
+        return edit_or_cancel(text.strip())
+    if args.file:
+        return read_file(args.file)
+    if args.messages:
+        return None
+    if sys.stdin.isatty():
+        err.print("[dim]Paste or type your message below.[/dim]")
+        return edit_or_cancel()
+    return sys.stdin.read()
 
+
+def read_messages(args: argparse.Namespace, err: Console) -> list[str]:
+    messages = list(args.messages)
+    text = read_input_text(args, err)
     if text is not None:
         if args.each_line:
             messages += [line.strip() for line in text.splitlines() if line.strip()]
@@ -211,58 +226,59 @@ def offer_copy(err: Console, results: list[MessageAnalysis]) -> None:
         err.print(f"[green]Copied {label}'s rewrite.[/green]")
 
 
-def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    check_flags(parser, args)
-    console = Console()
-    err = Console(stderr=True)
-
-    def fail(message: str, code: int = 2) -> int:
-        err.print(f"[red]error:[/red] {message}")
-        return code
-
+def select_personas(args: argparse.Namespace) -> list[Persona]:
     try:
         personas = load_personas(args.personas)
     except PersonaFileError as e:
-        return fail(str(e))
-
+        raise CLIError(str(e)) from None
     if args.only:
         unknown = sorted(set(args.only) - {p.name for p in personas})
         if unknown:
-            return fail(f"unknown persona(s): {', '.join(unknown)}")
+            raise CLIError(f"unknown persona(s): {', '.join(unknown)}")
         personas = [p for p in personas if p.name in args.only]
+    return personas
 
-    if args.list_personas:
-        for p in personas:
-            console.print(f"[cyan]{p.name}[/cyan] - {p.role}")
-            console.print(f"  values:   {', '.join(p.values)}")
-            console.print(f"  dislikes: {', '.join(p.dislikes)}")
-        return 0
 
-    # Check everything that could fail before the user types a message or pays for a call.
+def print_personas(console: Console, personas: list[Persona]) -> None:
+    for p in personas:
+        console.print(f"[cyan]{p.name}[/cyan] - {p.role}")
+        console.print(f"  values:   {', '.join(p.values)}")
+        console.print(f"  dislikes: {', '.join(p.dislikes)}")
+
+
+def prepare_analyzer(args: argparse.Namespace, personas: list[Persona], client: anthropic.Anthropic | None) -> Analyzer:
+    """Check everything that could fail before the user types a message or pays for a call."""
     if args.output and (problem := output_path_problem(args.output)):
-        return fail(f"can't write report: {problem}")
+        raise CLIError(f"can't write report: {problem}")
     try:
-        analyzer = Analyzer(personas, client=client, model=args.model, effort=args.effort)
+        return Analyzer(personas, client=client, model=args.model, effort=args.effort)
     except MissingCredentialsError as e:
         detail = "" if str(e) == "no Anthropic credentials found" else f"\n  ({e})"
-        return fail(f"no Anthropic credentials found. Set ANTHROPIC_API_KEY and try again.{detail}")
+        raise CLIError(f"no Anthropic credentials found. Set ANTHROPIC_API_KEY and try again.{detail}") from None
 
-    try:
-        messages = read_messages(args, err)
-    except InputError as e:
-        return fail(str(e))
-    except Cancelled:
-        err.print("Cancelled.")
-        return 1
+
+def get_messages(args: argparse.Namespace, err: Console) -> list[str]:
+    messages = read_messages(args, err)
     if not messages:
-        where = "the clipboard is empty" if args.clipboard else "pass it as an argument, pipe it in, or use --file or -c"
-        return fail(f"no message given ({where})")
+        if args.clipboard:
+            raise CLIError("no message given (the clipboard is empty)")
+        raise CLIError("no message given (pass it as an argument, pipe it in, or use --file or -c)")
+    return messages
 
-    results: list[MessageAnalysis] = []
-    failures = 0
-    stopped = None
+
+@dataclass
+class RunOutcome:
+    total: int
+    results: list[MessageAnalysis]
+    failures: int = 0
+    stopped: str | None = None  # why the run ended early, if it did
+
+
+def run_analyses(
+    analyzer: Analyzer, messages: list[str], console: Console, err: Console, show_tables: bool
+) -> RunOutcome:
+    """Analyze each message in turn. A failure that ends the run keeps what already finished."""
+    outcome = RunOutcome(total=len(messages), results=[])
     for msg in messages:
         preview = " ".join(msg.split())
         try:
@@ -270,30 +286,34 @@ def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = Non
                 analysis = analyzer.analyze(msg)
         except AnalysisError as e:
             err.print(f"[red]skipped:[/red] {preview[:60]!r}: {e}")
-            failures += 1
+            outcome.failures += 1
             continue
         except anthropic.AuthenticationError:
-            stopped = "authentication failed. Check ANTHROPIC_API_KEY and try again."
+            outcome.stopped = "authentication failed. Check ANTHROPIC_API_KEY and try again."
             break
         except anthropic.APIError as e:
-            stopped = f"API request failed: {e}"
+            outcome.stopped = f"API request failed: {e}"
             break
         except KeyboardInterrupt:
-            stopped = "interrupted."
+            outcome.stopped = "interrupted."
             break
 
-        if not args.json:
-            render(console, analysis, first_number=sum(len(r.reactions) for r in results) + 1)
-        results.append(analysis)
+        if show_tables:
+            render(console, analysis, first_number=sum(len(r.reactions) for r in outcome.results) + 1)
+        outcome.results.append(analysis)
+    return outcome
 
-    # Anything that finished is still reported, even if a later message stopped the run.
-    if stopped:
-        err.print(f"[red]error:[/red] {stopped}")
-        if len(messages) > 1:
-            done = len(results) + failures
-            err.print(f"Stopped after {done} of {len(messages)} messages; completed results are kept.")
 
-    if results and not args.json and not stopped and interactive():
+def finish(args: argparse.Namespace, outcome: RunOutcome, err: Console) -> int:
+    """Report how the run ended, offer copying, and output the JSON report. Returns the exit code."""
+    results = outcome.results
+    if outcome.stopped:
+        err.print(f"[red]error:[/red] {outcome.stopped}")
+        if outcome.total > 1:
+            done = len(results) + outcome.failures
+            err.print(f"Stopped after {done} of {outcome.total} messages; completed results are kept.")
+
+    if results and not args.json and not outcome.stopped and interactive():
         offer_copy(err, results)
 
     report = json.dumps([r.model_dump() for r in results], indent=2)
@@ -303,10 +323,33 @@ def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = Non
         try:
             Path(args.output).write_text(report + "\n", encoding="utf-8")
         except OSError as e:
-            return fail(f"can't write report to {args.output}: {e.strerror or e}", code=1)
+            raise CLIError(f"can't write report to {args.output}: {e.strerror or e}", code=1) from None
         err.print(f"Report written to {Path(args.output).resolve()}")
 
-    return 1 if failures or stopped else 0
+    return 1 if outcome.failures or outcome.stopped else 0
+
+
+def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    check_flags(parser, args)
+    console, err = Console(), Console(stderr=True)
+
+    try:
+        personas = select_personas(args)
+        if args.list_personas:
+            print_personas(console, personas)
+            return 0
+        analyzer = prepare_analyzer(args, personas, client)
+        messages = get_messages(args, err)
+        outcome = run_analyses(analyzer, messages, console, err, show_tables=not args.json)
+        return finish(args, outcome, err)
+    except CLIError as e:
+        err.print(f"[red]error:[/red] {e}")
+        return e.code
+    except Cancelled:
+        err.print("Cancelled.")
+        return 1
 
 
 if __name__ == "__main__":

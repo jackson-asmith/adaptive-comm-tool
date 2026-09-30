@@ -22,7 +22,8 @@ def test_schema_pins_persona_names(personas):
 
 def test_analyze_orders_and_clamps(personas):
     names = [p.name for p in personas]
-    payload = {"tone_tags": ["terse"], "reactions": [reaction(names[2]), reaction(names[0], 14), reaction(names[1], -3)]}
+    reactions = [reaction(names[2]), reaction(names[0], 14), reaction(names[1], -3)]
+    payload = {"tone_tags": ["terse"], "reactions": reactions}
     client = FakeClient(payload)
 
     result = Analyzer(personas, client=client).analyze("Re-run the tests.")
