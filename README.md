@@ -51,11 +51,13 @@ export ANTHROPIC_API_KEY=sk-ant-...
 # Short messages as arguments (each argument is one message)
 adaptive-comm "Can we push the deadline to Friday?" "LGTM 👍"
 
-# Longer text: copy it, then read it straight from the clipboard.
+# Longer text: copy it, then open it from the clipboard in an editor in
+# your terminal. Review or change it, then press Ctrl-S to send (Ctrl-C cancels).
 # No shell quoting, so !, apostrophes, and parentheses are all fine.
 adaptive-comm -c
+adaptive-comm -c -y    # send the clipboard as-is, without the editor
 
-# Or run with no arguments, paste, and press Ctrl-D
+# Or run with no arguments to open the editor empty, then paste or type
 adaptive-comm
 
 # Or pipe it in, or read it from a file (the whole input is one message)
@@ -78,7 +80,8 @@ adaptive-comm --list-personas
 
 | Option | Description |
 |---|---|
-| `-c, --clipboard` | Read the message from the clipboard (macOS, Linux with wl-clipboard or xclip, Windows/WSL) |
+| `-c, --clipboard` | Open the clipboard text in the editor (macOS, Linux with wl-clipboard or xclip, Windows/WSL) |
+| `-y, --yes` | With `-c`, send the clipboard text as-is instead of opening the editor |
 | `-f, --file PATH` | Read one message from a file (`-` for stdin) |
 | `--each-line` | Treat each non-empty line of the file or stdin as its own message |
 | `-p, --personas PATH` | Use your own personas YAML file |
@@ -121,6 +124,7 @@ src/adaptive_comm/
 ├── personas.py     # load and validate persona YAML
 ├── personas.yaml   # built-in personas
 ├── analyzer.py     # prompt, JSON schema, API call, response validation
+├── editor.py       # in-terminal editor for reviewing a message before sending
 └── cli.py          # argument parsing and table/JSON output
 ```
 

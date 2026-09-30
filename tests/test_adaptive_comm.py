@@ -184,3 +184,74 @@ def test_cli_clipboard_tool_missing(monkeypatch):
 def test_cli_clipboard_and_file_conflict():
     with pytest.raises(SystemExit):
         main(["-c", "-f", "x.txt"], client=FakeClient())
+
+
+class TTYInput(io.StringIO):
+    """Fake interactive stdin: reports itself as a terminal and supplies typed answers."""
+
+    def isatty(self):
+        return True
+
+
+@pytest.mark.parametrize("edited, sent", [("Edited text", True), (None, False)])
+def test_clipboard_opens_editor(monkeypatch, capsys, edited, sent):
+    seen = {}
+
+    def fake_editor(initial=""):
+        seen["initial"] = initial
+        return edited
+
+    monkeypatch.setattr("adaptive_comm.cli.read_clipboard", lambda: "  From the clipboard\n")
+    monkeypatch.setattr("adaptive_comm.cli.edit_message", fake_editor)
+    monkeypatch.setattr("sys.stdin", TTYInput(""))
+    client = FakeClient(full_payload())
+
+    code = main(["--json", "-c"], client=client)
+
+    assert seen["initial"] == "From the clipboard"
+    assert (code == 0) == sent
+    if sent:
+        assert analyzed(capsys) == ["Edited text"]
+    else:
+        assert client.calls == []
+
+
+def test_clipboard_yes_skips_editor(monkeypatch, capsys):
+    monkeypatch.setattr("adaptive_comm.cli.read_clipboard", lambda: "As copied")
+    monkeypatch.setattr("adaptive_comm.cli.edit_message", lambda initial="": pytest.fail("editor opened"))
+    monkeypatch.setattr("sys.stdin", TTYInput(""))
+
+    assert main(["--json", "-c", "-y"], client=FakeClient(full_payload())) == 0
+    assert analyzed(capsys) == ["As copied"]
+
+
+def test_no_args_in_terminal_opens_empty_editor(monkeypatch, capsys):
+    monkeypatch.setattr("adaptive_comm.cli.edit_message", lambda initial="": "Typed in the editor")
+    monkeypatch.setattr("sys.stdin", TTYInput(""))
+
+    assert main(["--json"], client=FakeClient(full_payload())) == 0
+    assert analyzed(capsys) == ["Typed in the editor"]
+
+
+# The real editor, driven with simulated keystrokes.
+from prompt_toolkit.input import create_pipe_input  # noqa: E402
+from prompt_toolkit.output import DummyOutput  # noqa: E402
+
+from adaptive_comm.editor import edit_message  # noqa: E402
+
+CTRL_S, CTRL_C, ESC, BACKSPACE = "\x13", "\x03", "\x1b", "\x7f"
+
+
+@pytest.mark.parametrize(
+    "initial, keys, expected",
+    [
+        ("", "Hello\rworld" + CTRL_S, "Hello\nworld"),  # Enter adds a line; Ctrl-S sends
+        ("Draft!", BACKSPACE + "?" + CTRL_S, "Draft?"),  # edit prefilled text
+        ("Keep (this)", ESC + "\r", "Keep (this)"),  # Esc then Enter also sends
+        ("Anything", CTRL_C, None),  # Ctrl-C cancels
+    ],
+)
+def test_editor_keys(initial, keys, expected):
+    with create_pipe_input() as pipe:
+        pipe.send_text(keys)
+        assert edit_message(initial, input=pipe, output=DummyOutput()) == expected

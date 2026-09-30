@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from adaptive_comm.analyzer import DEFAULT_EFFORT, DEFAULT_MODEL, AnalysisError, Analyzer, MessageAnalysis
+from adaptive_comm.editor import edit_message
 from adaptive_comm.personas import PersonaFileError, load_personas
 
 
@@ -26,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "messages",
         nargs="*",
-        help="message(s) to analyze; if omitted, reads piped stdin or prompts you to paste one",
+        help="message(s) to analyze; if omitted, reads piped stdin or opens an editor to paste into",
     )
     source = p.add_mutually_exclusive_group()
     source.add_argument("-f", "--file", help="read a message from a file ('-' for stdin)")
@@ -36,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="treat each non-empty line of --file/stdin as a separate message",
     )
+    p.add_argument("-y", "--yes", action="store_true", help="send clipboard text without opening it for editing first")
     p.add_argument("-p", "--personas", help="YAML file of personas (default: built-in set)")
     p.add_argument(
         "--only",
@@ -70,6 +72,10 @@ class ClipboardError(RuntimeError):
     """Raised when no clipboard tool is available or reading it fails."""
 
 
+class Cancelled(Exception):
+    """Raised when the user cancels out of the editor."""
+
+
 def read_clipboard() -> str:
     for cmd in CLIPBOARD_COMMANDS:
         if shutil.which(cmd[0]) is None:
@@ -87,12 +93,21 @@ def read_messages(args: argparse.Namespace, err: Console) -> list[str]:
     text = None
     if args.clipboard:
         text = read_clipboard()
+        if not args.yes and not args.each_line and sys.stdin.isatty():
+            err.print("[dim]From clipboard. Edit if needed.[/dim]")
+            text = edit_message(text.strip())
+            if text is None:
+                raise Cancelled
     elif args.file:
         text = sys.stdin.read() if args.file == "-" else Path(args.file).read_text()
     elif not messages:
         if sys.stdin.isatty():
-            err.print("[dim]Paste your message, then press Ctrl-D on a new line (or copy it and run with -c):[/dim]")
-        text = sys.stdin.read()
+            err.print("[dim]Paste or type your message below.[/dim]")
+            text = edit_message()
+            if text is None:
+                raise Cancelled
+        else:
+            text = sys.stdin.read()
 
     if text is not None:
         if args.each_line:
@@ -158,6 +173,9 @@ def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = Non
     except ClipboardError as e:
         err.print(f"[red]error:[/red] could not read the clipboard: {e}")
         return 2
+    except Cancelled:
+        err.print("Cancelled.")
+        return 1
     if not messages:
         where = "the clipboard is empty" if args.clipboard else "pass it as an argument, pipe it in, or use --file or -c"
         err.print(f"[red]error:[/red] no message given ({where})")
