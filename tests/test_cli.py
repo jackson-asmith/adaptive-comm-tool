@@ -263,6 +263,14 @@ def test_bad_output_path_fails_before_any_call(tmp_path, capsys, setup, message)
     assert client.calls == []
 
 
+def test_long_error_messages_are_not_split(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "80")
+    deep = tmp_path / ("very_long_directory_name_" * 4) / "missing" / "report.json"
+
+    assert main(["-o", str(deep), "hi"], client=FakeClient()) == 2
+    assert f"directory {deep.parent} does not exist" in capsys.readouterr().err
+
+
 def test_output_path_problem_permissions(tmp_path):
     locked = tmp_path / "locked"
     locked.mkdir()

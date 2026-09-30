@@ -333,7 +333,9 @@ def main(argv: list[str] | None = None, client: anthropic.Anthropic | None = Non
     parser = build_parser()
     args = parser.parse_args(argv)
     check_flags(parser, args)
-    console, err = Console(), Console(stderr=True)
+    # soft_wrap: let the terminal wrap messages instead of Rich inserting line breaks,
+    # which would split error text in logs and pipes.
+    console, err = Console(), Console(stderr=True, soft_wrap=True)
 
     try:
         personas = select_personas(args)
