@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "coverage>=7.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "coverage>=7.0", "ruff==0.16.9"]  # pinned so local and CI lint agree
 
 [project.scripts]
 adaptive-comm = "adaptive_comm.cli:main"

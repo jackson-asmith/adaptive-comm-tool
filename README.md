@@ -1,5 +1,7 @@
 # adaptive-comm-tool
 
+[![CI](https://github.com/jackson-asmith/adaptive-comm-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/jackson-asmith/adaptive-comm-tool/actions/workflows/ci.yml)
+
 **See how your message lands with different people before you hit send.**
 
 The same Slack message can read as efficient to one teammate and dismissive to another. `adaptive-comm` takes a message and a set of personas (the people who will read it), then uses Claude to:
